@@ -54,7 +54,8 @@ struct LandmarkObs {
  * @param (x2,y2) x and y coordinates of second point
  * @output Euclidean distance between two 2D points
  */
-inline double dist(double x1, double y1, double x2, double y2) {
+inline double dist(double x1, double y1, double x2, double y2) 
+{
 	return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
@@ -74,12 +75,13 @@ inline double * getError(double gt_x, double gt_y, double gt_theta, double pf_x,
  * @param filename Name of file containing map data.
  * @output True if opening and reading file was successful
  */
-inline bool read_map_data(std::string filename, Map& map) {
-
+inline bool read_map_data(std::string filename, Map& map) 
+{
 	// Get file of map:
 	std::ifstream in_file_map(filename.c_str(),std::ifstream::in);
 	// Return if we can't open the file.
-	if (!in_file_map) {
+	if (!in_file_map) 
+	{
 		return false;
 	}
 	
