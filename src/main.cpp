@@ -46,7 +46,7 @@ int main()
       return -1;
     }
 
-  // Create particle filter
+    // Create particle filter
     ParticleFilter pf;
 
     h.onMessage([&pf,&map,&delta_t,&sensor_range,&sigma_pos,&sigma_landmark](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
@@ -195,7 +195,7 @@ int main()
         std::cerr << "Failed to listen to port" << std::endl;
         return -1;
     }
-    
+
     h.run();
 }
 
