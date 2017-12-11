@@ -31,7 +31,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[])
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-	num_particles = 100;
+	num_particles = 1;
 
 	std::default_random_engine dre;
 	std::mt19937 eng(dre());
@@ -94,7 +94,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	    {
 			particles[i].x = x + velocity/yaw_rate * (sin(theta+yaw_rate*delta_t)-sin(theta)) + err_y; 
 			particles[i].y = y + velocity/yaw_rate * (-cos(theta+yaw_rate*delta_t)+cos(theta)) + err_y;
-			particles[i].theta = theta + yaw_rate * delta_t + 0.5f * delta_t*delta_t * err_theta;
+			particles[i].theta = theta + yaw_rate * delta_t + err_theta * 0.5f * delta_t*delta_t;   // Where did this factor come from?
 	    }
 	    else if (yaw_rate == 0.0f)
 	    {
@@ -148,28 +148,28 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], c
 	// Also ignore the sensor's error.
 	for (int i=0; i < num_particles; ++i)
 	{
-		// Initialize the transformation matrices (World->Car)
-		double theta = particles[i].theta;
-		Eigen::MatrixXd rotation = Eigen::MatrixXd(3, 3);
-		rotation << cos(theta), sin(theta), 0,
-					-sin(theta), cos(theta), 0,
-					0, 0, 1;
-
-		double t_x = particles[i].x;
-		double t_y = particles[i].y;
-		Eigen::MatrixXd translation = Eigen::MatrixXd(3, 3);
-		translation << 1, 0, -t_x,
-					   0, 1, -t_y,
-					   0, 0, 1;
-
+		const double p_x = particles[i].x;
+		const double p_y = particles[i].y;
+		const double p_theta = particles[i].theta;
 
 		const double sigma_x = std_landmark[0];
 		const double sigma_y = std_landmark[1];
-		const double gauss_weight = 1. / (sqrt(2 * M_PI) * std_landmark[0] * std_landmark[1]);
+		const double gauss_weight = 1. / (2 * M_PI * std_landmark[0] * std_landmark[1]);
+
+		// The following matrices shall be initialized when using 'Eigen'.		
+		// Initialize the transformation matrices (World->Car)
+		/*Eigen::MatrixXd rotation = Eigen::MatrixXd(3, 3);
+		rotation << cos(theta), -sin(theta), 0,
+					sin(theta), cos(theta), 0,
+					0, 0, 1;
+
+		Eigen::MatrixXd translation = Eigen::MatrixXd(3, 3);
+		translation << 1, 0, p_x,
+					   0, 1, p_y,
+					   0, 0, 1;*/
 
 
-		vector<LandmarkObs> predicted_landmarks;
-		
+
 		// TODO steps:
 		// 0.) Determine whether the observation is in range or not
 		// 1.) Predict positions of landmarks
@@ -177,58 +177,98 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], c
 		// 3.) Calculate the weights
 
 
-		// 0.) Determine whether the observation is in range or not
-		//
+		// 0.) Determine whether the observation is in range or not:
+
+		vector<Map::single_landmark_s> landmark_candidates;
+
+		// Uncomment the following line to display the particle's coordinates:
+		//cout << "Particle no. " << i << ":\t\t" << p_x << "\t" << p_y << endl;
+
 		// Iterate over all landmarks in the map:
 		for (auto landmark_iterator : map_landmarks.landmark_list)
 		{
-			// Initialize the observed position of landmark:
-			Eigen::VectorXd landmark_pos = Eigen::VectorXd(3);
-			landmark_pos << landmark_iterator.x_f, landmark_iterator.y_f, 1;	
-
-			// Calculate the car coordinates of the landmarks
-			landmark_pos = rotation * translation * landmark_pos;
-
 			// 1.) Predict positions of landmarks
 			//
-			// Save the world coordinates of the observations and associate them!
-			if (dist(landmark_pos[0], 0., landmark_pos[1], 0.) <= sensor_range)
+			// Save the car coordinates of the observations and associate them!
+			//if (dist(landmark_pos[0], 0., landmark_pos[1], 0.) <= sensor_range)
+
+			/*	Reduce the list of landmarks to those within sensor range
+			 *	increase the sensor range by a small percentage in order to incorporate deviation
+			 *	of particle's position from ground truth.
+			 */
+			if (dist(landmark_iterator.x_f, landmark_iterator.y_f, p_x, p_y) <= sensor_range*1.1)
 			{
-				LandmarkObs tmp;
-				tmp.x = landmark_pos[0];
-				tmp.y = landmark_pos[1];
-				tmp.id = landmark_iterator.id_i;
-				predicted_landmarks.push_back(tmp);
+				landmark_candidates.push_back(landmark_iterator);
+
+				// Uncomment the following lines to display a list of potential landmarks within sensor range:
+				/*cout << "Candidate landmark in sensor range: \t\t" 
+					 << landmark_iterator.x_f << "\t" 
+					 << landmark_iterator.y_f << "\t" 
+					 << landmark_iterator.id_i << endl; 
+				*/
 			}
 		}
 
+		//Initialize the observed position of landmark:
+		//Eigen::VectorXd landmark_pos = Eigen::VectorXd(3);
+		//landmark_pos << landmark_iterator.x_f, landmark_iterator.y_f, 1;	
+
 		
+
+
 		// 2.) Data association
 		//
 		// The Euclidean distance between two objects is Galileo invariant. 
 		// Hence, we can either transform the landmarks of the map into car-coordinates and call them 'predictions' or 
-		// transform the observations into world-coordinates.  My guess is that dataAssociation was designed for the former case.
-
+		// transform the observations into world-coordinates.
+		// We will do the latter.
+		
 		for (auto obs_it : observations)
 		{
-			double new_distance;
-			double min_distance = 4.0; 
-			LandmarkObs next_landmark;
+			// Calculate the world coordinates of the observations:
+			//landmark_pos = rotation * translation * landmark_pos;
 
-			for (auto landmark_it : predicted_landmarks)
+			// temporary variables to avoid miscalculation in line (2) below:
+			double tmp_x, tmp_y;
+
+			tmp_x = obs_it.x * cos(p_theta)  -  obs_it.y * sin(p_theta) + p_x; // (1)
+			tmp_y = obs_it.x * sin(p_theta)  +  obs_it.y * cos(p_theta) + p_y; // (2)
+
+			obs_it.x = tmp_x;
+			obs_it.y = tmp_y;
+
+			double new_distance;
+			double min_distance = 50.0; 
+			LandmarkObs closest_landmark;
+
+			// Find the nearest match from the candidate list (the selection from the map).
+			for (auto cand_it : landmark_candidates)
 			{
-				new_distance = dist(obs_it.x, landmark_it.x, obs_it.y, landmark_it.y);
+				new_distance = dist(obs_it.x, obs_it.y, cand_it.x_f, cand_it.y_f);
 
 				if (new_distance < min_distance) {
 					min_distance = new_distance;	
-					next_landmark = landmark_it;
+					// Three lines, since Map::single_landmark_s and LandmarkObs are different data structures
+					closest_landmark.x = cand_it.x_f;
+					closest_landmark.y = cand_it.y_f;
+					closest_landmark.id = cand_it.id_i;
 				}
 			}
-			cout << "Distance between predicted and observed points: " << min_distance << endl;
+
+			if (min_distance < 50.0)
+				cout << "Distance between predicted and observed points: " << min_distance << endl;
+
+
+			// Uncomment the following lines to display the closest landmark:
+			/*cout << "Closest landmark no." << closest_landmark.id << ":\t\t" 
+				 << closest_landmark.x << "\t" 
+				 << closest_landmark.y << endl; 
+			*/
 
 			// 3.) Calculate the weights
-			double exponential = pow((obs_it.x-next_landmark.x)/sigma_x, 2) + pow((obs_it.y-next_landmark.y)/sigma_y, 2);
-			particles[i].weight *= gauss_weight * exp( -0.5f * exponential );
+			double exponent = pow((obs_it.x-closest_landmark.x)/sigma_x, 2) + pow((obs_it.y-closest_landmark.y)/sigma_y, 2);
+			particles[i].weight *= gauss_weight * exp( -0.5f * exponent );
+			cout << particles[i].weight << endl;
 		}
 
 	}
@@ -247,15 +287,12 @@ void ParticleFilter::resample()
 	std::mt19937 eng(dre());
 
 	std::discrete_distribution<> ddist(weights.begin(), weights.end());
-
-	//std::map<int, int> m;
-
 	std::vector<Particle> particles_tmp = particles;
 
 	for (int i=0; i<num_particles; ++i)
 	{
-		//++m[ddist(gen)];
 		particles[i] = particles_tmp[ddist(eng)];
+		particles[i].weight = 1.0;
 	}
 }
 
