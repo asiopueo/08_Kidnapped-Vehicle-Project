@@ -94,13 +94,13 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	    {
 			particles[i].x = x + velocity/yaw_rate * (sin(theta+yaw_rate*delta_t)-sin(theta)) + err_y; 
 			particles[i].y = y + velocity/yaw_rate * (-cos(theta+yaw_rate*delta_t)+cos(theta)) + err_y;
-			particles[i].theta = theta + yaw_rate * delta_t + err_theta * 0.5f * delta_t*delta_t;   // Where did this factor come from?
+			particles[i].theta = theta + yaw_rate * delta_t + err_theta;
 	    }
 	    else if (yaw_rate == 0.0f)
 	    {
 			particles[i].x = x + velocity * cos(theta) * delta_t + err_x;
 			particles[i].y = y + velocity * sin(theta) * delta_t + err_y;
-			particles[i].theta = err_theta;
+			particles[i].theta = theta + err_theta;
 	    }
 	}
 }
@@ -214,8 +214,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], c
 		//landmark_pos << landmark_iterator.x_f, landmark_iterator.y_f, 1;	
 
 		
-
-
 		// 2.) Data association
 		//
 		// The Euclidean distance between two objects is Galileo invariant. 
@@ -268,8 +266,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], c
 			// 3.) Calculate the weights
 			double exponent = pow((obs_it.x-closest_landmark.x)/sigma_x, 2) + pow((obs_it.y-closest_landmark.y)/sigma_y, 2);
 			particles[i].weight *= gauss_weight * exp( -0.5f * exponent );
-			cout << particles[i].weight << endl;
+
+			//cout << particles[i].weight << endl;
 		}
+
+		// Populating weights vector for later resampling
+		weights.push_back(particles[i].weight);
 
 	}
 }
@@ -294,6 +296,8 @@ void ParticleFilter::resample()
 		particles[i] = particles_tmp[ddist(eng)];
 		particles[i].weight = 1.0;
 	}
+
+	weights.clear();
 }
 
 
