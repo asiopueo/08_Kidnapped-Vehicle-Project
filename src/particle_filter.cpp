@@ -31,7 +31,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[])
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-	num_particles = 1;
+	num_particles = 50;
 
 	std::default_random_engine dre;
 	std::mt19937 eng(dre());
